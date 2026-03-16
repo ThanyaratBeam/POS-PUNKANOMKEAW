@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#1aaa5e">
+  <title>PUNKANOMKEAW</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+  <style>
+    @keyframes confettiFall { 0%{transform:translateY(0) translateX(0) rotate(0deg);opacity:1} 100%{transform:translateY(100vh) translateX(var(--drift)) rotate(var(--rotate));opacity:0} }
+    @keyframes stepOut { to{opacity:0;transform:translateX(-30px)} }
+    @keyframes stepIn  { from{opacity:0;transform:translateX(30px)} to{opacity:1;transform:translateX(0)} }
+    @keyframes shake   { 0%,100%{transform:translateX(0)} 20%,60%{transform:translateX(-8px)} 40%,80%{transform:translateX(8px)} }
+    @keyframes loginSuccess { to{opacity:0;transform:scale(1.05) translateY(-20px)} }
+    .promo-chip{display:inline-flex;align-items:center;background:rgba(240,160,32,.1);border:1px solid rgba(240,160,32,.3);border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700;color:var(--warning);cursor:pointer;transition:all .18s ease}
+    .promo-chip:hover{background:rgba(240,160,32,.2)}
+    .promo-chip.active{background:var(--warning);color:#fff;border-color:var(--warning)}
+    .rpt-tab.active{background:var(--accent);border-color:var(--accent);color:#fff;transform:scale(1.05)}
+    #lang-toggle{font-family:'Prompt',sans-serif;font-size:11px;font-weight:800;letter-spacing:.5px}
+    .acc-row-avatar{cursor:pointer;transition:transform .2s ease,box-shadow .2s ease}
+    .acc-row-avatar:hover{transform:scale(1.08);box-shadow:0 4px 14px rgba(26,170,94,.3)}
+  </style>
+</head>
+<body>
+
+<!-- ═══ LOGIN ═══ -->
+<div id="login-screen">
+  <div class="login-blob-extra"></div>
+  <div class="login-blob-extra"></div>
+  <div class="login-blob-extra"></div>
+  <div id="login-particles"></div>
+  <div class="login-box" id="login-box">
+    <div class="login-logo">
+      <span class="brand-icon">🧸</span>
+      <div class="brand">PUNKANOMKEAW</div>
+      <div class="sub">ระบบจัดการร้านค้า คลังกลาง + สาขา</div>
+    </div>
+    <div id="login-step1">
+      <div class="login-section-label">เลือกสาขา</div>
+      <div id="branch-list"></div>
+      <div style="text-align:center;margin-top:16px">
+        <button onclick="clearDB()" style="background:none;border:none;font-size:11px;color:var(--text-faint);cursor:pointer;text-decoration:underline">🔄 ล้างข้อมูลแคช</button>
+      </div>
+    </div>
+    <div id="login-step2" style="display:none">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <button onclick="goBackStep()" style="background:none;border:none;cursor:pointer;font-size:20px;color:var(--text-muted);padding:0;line-height:1">‹</button>
+        <div>
+          <div class="login-section-label" style="margin-bottom:0">สาขา</div>
+          <div id="step2-branch-name" style="font-weight:800;font-size:16px;color:var(--pandan-600)"></div>
+        </div>
+      </div>
+      <div class="login-section-label">เลือกพนักงาน</div>
+      <div id="staff-list" style="margin-bottom:16px"></div>
+      <div class="form-group">
+        <label class="form-label">รหัสผ่าน</label>
+        <input class="form-input" id="login-pw" type="password" placeholder="กรอกรหัสผ่าน" onkeydown="if(event.key==='Enter')doLogin()">
+      </div>
+      <button class="btn-login" onclick="doLogin()">🔑 เข้าสู่ระบบ</button>
+      <div class="login-error" id="login-error">❌ รหัสผ่านไม่ถูกต้อง</div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APP ═══ -->
+<div id="app">
+  <div id="online-banner" style="display:none;background:rgba(26,170,94,.1);border-bottom:1px solid rgba(26,170,94,.2);padding:7px 20px;font-size:12px;color:var(--pandan-600);font-weight:700;align-items:center;gap:8px;flex-shrink:0"></div>
+  <div id="low-stock-alert" style="display:none;background:rgba(240,160,32,.12);border-bottom:1px solid rgba(240,160,32,.3);padding:8px 20px;font-size:12px;color:var(--warning);font-weight:700;align-items:center;gap:8px;flex-shrink:0"></div>
+  <div id="pull-indicator" style="display:none;position:fixed;top:60px;left:50%;transform:translateX(-50%);z-index:300;background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:20px;padding:6px 14px;font-size:12px;color:var(--pandan-600);align-items:center;gap:6px">🔄 ดึงเพื่อรีเฟรช</div>
+
+  <header class="topbar">
+    <div class="topbar-brand"><span>🧸</span>PUNKANOMKEAW</div>
+    <div class="topbar-spacer"></div>
+    <div style="font-size:10px;color:var(--text-faint);display:flex;gap:5px;align-items:center" class="hide-mobile">
+      <span class="kbd-hint">F2</span>ขาย <span class="kbd-hint">F8</span>ชำระ
+    </div>
+    <button id="btn-shift" class="btn btn-warning btn-sm" onclick="openShiftSummary()" style="display:none">⏱️ กะ</button>
+    <span id="sync-status" style="display:none;font-size:10px;font-weight:700;padding:3px 8px;border-radius:12px;background:var(--glass-bg2);border:1px solid var(--glass-border)"></span>
+    <button id="lang-toggle" class="btn btn-secondary btn-xs" onclick="toggleLang()" style="width:32px;height:32px;padding:0;justify-content:center;font-size:11px;font-weight:800">EN</button>
+    <button id="btn-theme" class="btn btn-secondary btn-xs" onclick="toggleTheme()" style="width:32px;height:32px;padding:0;justify-content:center;font-size:16px">🌙</button>
+    <div class="notif-btn" id="notif-btn" onclick="toggleNotifPanel()">🔔<div class="notif-dot" id="notif-dot"></div></div>
+    <div class="user-chip">
+      <div class="uc-avatar" id="user-avatar"></div>
+      <div><div class="uc-name" id="user-name"></div><div class="uc-role" id="user-role"></div></div>
+    </div>
+    <button class="logout-btn" onclick="doLogout()">ออก</button>
+  </header>
+
+  <div class="notif-panel" id="notif-panel">
+    <div class="notif-panel-header">🔔 การแจ้งเตือน</div>
+    <div id="notif-list"></div>
+  </div>
+
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="nav-section">
+        <div class="nav-section-title">เมนูหลัก</div>
+        <div class="nav-item active" data-page="pos" onclick="navigate('pos')"><span class="nav-icon">🏪</span><span class="nav-label">หน้าขาย</span></div>
+        <div class="nav-item" data-page="dash" onclick="navigate('dash')"><span class="nav-icon">📊</span><span class="nav-label">แดชบอร์ด</span></div>
+        <div class="nav-item" data-page="hist" onclick="navigate('hist')"><span class="nav-icon">📋</span><span class="nav-label">ประวัติขาย</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">สินค้า</div>
+        <div class="nav-item" data-page="products" onclick="navigate('products')"><span class="nav-icon">📦</span><span class="nav-label">สินค้า</span></div>
+        <div class="nav-item" data-page="stock" onclick="navigate('stock')"><span class="nav-icon">🗄️</span><span class="nav-label">สต็อก</span></div>
+        <div class="nav-item" data-page="withdraw" onclick="navigate('withdraw')"><span class="nav-icon">📤</span><span class="nav-label">เบิกสินค้า</span><span class="nav-badge" id="withdraw-badge"></span></div>
+        <div class="nav-item" data-page="stocklog" onclick="navigate('stocklog')"><span class="nav-icon">📝</span><span class="nav-label">ประวัติสต็อก</span></div>
+      </div>
+      <div class="nav-section">
+        <div class="nav-section-title">ลูกค้า</div>
+        <div class="nav-item" data-page="customers" onclick="navigate('customers')"><span class="nav-icon">👥</span><span class="nav-label">สมาชิก</span></div>
+      </div>
+      <div class="nav-section" id="admin-nav">
+        <div class="nav-section-title">ระบบ</div>
+        <div class="nav-item" data-page="accounts" onclick="navigate('accounts')"><span class="nav-icon">⚙️</span><span class="nav-label">บัญชีผู้ใช้</span></div>
+        <div class="nav-item" data-page="report" onclick="navigate('report')"><span class="nav-icon">📑</span><span class="nav-label">รายงาน</span></div>
+        <div class="nav-item" data-page="promotions" onclick="navigate('promotions')"><span class="nav-icon">🎁</span><span class="nav-label">โปรโมชั่น</span></div>
+        <div class="nav-item" data-page="loginlog" onclick="navigate('loginlog')"><span class="nav-icon">🔐</span><span class="nav-label">ประวัติ Login</span></div>
+      </div>
+      <div class="sidebar-footer hide-mobile">
+        <div id="sb-clock"></div>
+        <div id="sb-date"></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      <!-- POS -->
+      <div class="page active" id="page-pos" style="padding:0">
+        <div class="pos-layout">
+          <div class="pos-left">
+            <div style="display:flex;gap:8px;margin-bottom:10px">
+              <input class="search-input" id="pos-search-input" placeholder="🔍 ค้นหา / SKU..." oninput="onPosSearch(this.value)" style="flex:1">
+              <button class="btn btn-secondary" onclick="openBarcodeScanner()" title="สแกน" style="padding:10px 12px">📷</button>
+            </div>
+            <div class="cat-tabs" id="pos-cats"></div>
+            <!-- Promo bar -->
+            <div id="pos-promo-bar" style="display:none;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:rgba(26,170,94,.06);border-radius:10px;border:1px solid rgba(26,170,94,.15);font-size:12px;flex-wrap:wrap"></div>
+            <div class="product-grid" id="pos-product-grid"></div>
+          </div>
+          <div class="pos-right">
+            <div class="cart-header"><div class="cart-title">🛒 ตะกร้า</div><button class="btn btn-secondary btn-xs" onclick="clearCart()">ล้าง</button></div>
+            <div style="padding:8px 16px 4px;border-bottom:1px solid var(--glass-border)"><div id="cart-customer-badge"></div></div>
+            <div class="cart-body" id="cart-body"><div class="cart-empty"><div class="ei">🛒</div><p>ยังไม่มีสินค้า</p></div></div>
+            <div class="cart-footer">
+              <div class="cart-total-row"><span class="cart-total-label">ยอดรวม</span><span class="cart-total-value" id="cart-total-value">฿0</span></div>
+              <button class="btn btn-success" style="width:100%;justify-content:center;font-size:14px;padding:12px" onclick="openPayment()">💳 ชำระเงิน</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard -->
+      <div class="page" id="page-dash">
+        <div class="page-header"><div class="page-title">📊 แดชบอร์ด</div><div class="page-subtitle">ภาพรวมยอดขายและสต็อก</div></div>
+        <div class="period-tabs"><div class="period-tab active" onclick="setDashPeriod('day',this)">วันนี้</div><div class="period-tab" onclick="setDashPeriod('week',this)">สัปดาห์</div><div class="period-tab" onclick="setDashPeriod('month',this)">เดือนนี้</div><div class="period-tab" onclick="setDashPeriod('year',this)">ปีนี้</div></div>
+        <div class="period-tabs" id="dash-branch-selector" style="display:none;margin-top:-8px;margin-bottom:16px"></div>
+        <div class="grid-4 mb-3" id="dash-stats"></div>
+        <div class="grid-2 mb-3">
+          <div class="glass-card"><div class="card-header"><span class="card-header-title">📈 ยอดขาย 7 วัน</span></div><div class="glass-card-pad" style="height:180px" id="dash-chart-container"></div></div>
+          <div class="glass-card"><div class="card-header"><span class="card-header-title">🏆 สินค้าขายดี</span></div><div class="glass-card-pad" id="dash-top-products"></div></div>
+        </div>
+        <div class="grid-2">
+          <div class="glass-card"><div class="card-header"><span class="card-header-title">💳 ช่องทางชำระเงิน</span></div><div class="glass-card-pad" id="dash-pay-breakdown"></div></div>
+          <div class="glass-card"><div class="card-header"><span class="card-header-title">⚠️ สต็อกต่ำ</span></div><div class="glass-card-pad" id="dash-low-stock"></div></div>
+        </div>
+      </div>
+
+      <!-- History -->
+      <div class="page" id="page-hist">
+        <div class="page-header flex-row">
+          <div class="ph-info"><div class="page-title">📋 ประวัติการขาย</div></div>
+          <div class="spacer"></div>
+          <input class="search-input" style="width:200px" placeholder="🔍 ค้นหา..." oninput="renderHistory(this.value)">
+        </div>
+        <div id="history-content"></div>
+      </div>
+
+      <!-- Products -->
+      <div class="page" id="page-products">
+        <div class="page-header flex-row">
+          <div><div class="page-title">📦 จัดการสินค้า</div></div>
+          <div class="spacer"></div>
+          <input class="search-input" style="width:160px" placeholder="🔍 ค้นหา..." oninput="renderProducts(this.value)">
+          <button class="btn btn-primary" onclick="openAddProduct()">+ เพิ่ม</button>
+        </div>
+        <div class="product-grid" id="product-grid-mgmt"></div>
+      </div>
+
+      <!-- Stock -->
+      <div class="page" id="page-stock">
+        <div class="page-header flex-row">
+          <div><div class="page-title">🗄️ ภาพรวมสต็อก</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-secondary" onclick="openAdjustStock()">+ ปรับสต็อก</button>
+        </div>
+        <div class="grid-4 mb-3" id="stock-stats"></div>
+        <div class="period-tabs mb-2" id="stock-branch-filter" style="display:none;align-items:center;gap:8px"></div>
+        <div class="glass-card">
+          <div style="display:grid;grid-template-columns:2fr 1fr 1fr 1fr 80px 100px;gap:10px;padding:10px 18px;background:rgba(26,170,94,.06)">
+            <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px">สินค้า</div>
+            <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;text-align:center">คลังกลาง</div>
+            <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;text-align:center" id="stock-branch-col">สต็อกสาขา</div>
+            <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;text-align:center">รวม</div>
+            <div style="font-size:10px;font-weight:800;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;text-align:center">สถานะ</div>
+            <div></div>
+          </div>
+          <div id="stock-table-body"></div>
+        </div>
+      </div>
+
+      <!-- Stock Log -->
+      <div class="page" id="page-stocklog">
+        <div class="page-header"><div class="page-title">📝 ประวัติสต็อก</div></div>
+        <div id="stocklog-content"></div>
+      </div>
+
+      <!-- Withdraw -->
+      <div class="page" id="page-withdraw">
+        <div class="page-header flex-row">
+          <div><div class="page-title">📤 เบิกสินค้า</div><div class="page-subtitle" id="withdraw-subtitle"></div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" id="btn-new-withdraw" onclick="openNewWithdraw()">+ เบิก</button>
+        </div>
+        <div id="withdraw-content"></div>
+      </div>
+
+      <!-- Customers -->
+      <div class="page" id="page-customers">
+        <div class="page-header flex-row">
+          <div><div class="page-title">👥 สมาชิก & แต้มสะสม</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" onclick="openAddCustomer()">+ เพิ่มลูกค้า</button>
+        </div>
+        <div id="customers-content"></div>
+      </div>
+
+      <!-- Accounts -->
+      <div class="page" id="page-accounts">
+        <div class="page-header flex-row">
+          <div><div class="page-title">⚙️ บัญชีผู้ใช้</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" onclick="openAddAccount()">+ เพิ่ม</button>
+        </div>
+        <div class="glass-card" id="accounts-list"></div>
+      </div>
+
+      <!-- Report (ใหม่) -->
+      <div class="page" id="page-report">
+        <div class="page-header flex-row">
+          <div><div class="page-title">📑 รายงาน</div></div>
+          <div class="spacer"></div>
+          <div class="period-tabs" style="margin-bottom:0">
+            <div class="rpt-tab period-tab" onclick="setReportPeriod('day',this)">วันนี้</div>
+            <div class="rpt-tab period-tab active" onclick="setReportPeriod('month',this)">เดือนนี้</div>
+            <div class="rpt-tab period-tab" onclick="setReportPeriod('year',this)">ปีนี้</div>
+          </div>
+        </div>
+        <div id="report-content"></div>
+      </div>
+
+      <!-- Promotions (ใหม่) -->
+      <div class="page" id="page-promotions">
+        <div class="page-header flex-row">
+          <div><div class="page-title">🎁 โปรโมชั่น</div></div>
+          <div class="spacer"></div>
+          <button class="btn btn-primary" onclick="openAddPromo()">+ เพิ่มโปรฯ</button>
+        </div>
+        <div id="promotions-content"></div>
+      </div>
+
+      <!-- Login Log (ใหม่) -->
+      <div class="page" id="page-loginlog">
+        <div class="page-header"><div class="page-title">🔐 ประวัติการ Login</div></div>
+        <div id="loginlog-content"></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ═══ MODALS ═══ -->
+
+<!-- Confirm -->
+<div class="modal-overlay" id="modal-confirm"><div class="modal" style="width:380px;text-align:center">
+  <div style="font-size:32px;margin-bottom:12px">⚠️</div>
+  <div class="modal-title" id="confirm-msg" style="justify-content:center;font-size:15px;margin-bottom:20px"></div>
+  <div class="modal-actions" style="justify-content:center">
+    <button class="btn btn-secondary" id="confirm-cancel">ยกเลิก</button>
+    <button class="btn btn-danger" id="confirm-ok" style="padding:10px 28px">ยืนยัน</button>
+  </div>
+</div></div>
+
+<!-- Prompt -->
+<div class="modal-overlay" id="modal-prompt"><div class="modal" style="width:380px">
+  <div class="modal-title" id="prompt-label" style="font-size:15px"></div>
+  <div class="form-group"><input class="form-input" id="prompt-input" onkeydown="if(event.key==='Enter')$('prompt-ok').click()"></div>
+  <div class="modal-actions">
+    <button class="btn btn-secondary" onclick="closeModal('modal-prompt')">ยกเลิก</button>
+    <button class="btn btn-primary" id="prompt-ok" style="padding:10px 28px">ตกลง</button>
+  </div>
+</div></div>
+
+<!-- Payment -->
+<div class="modal-overlay" id="modal-payment"><div class="modal">
+  <div class="modal-title">💳 ชำระเงิน</div>
+  <div class="pay-options">
+    <div class="pay-option selected" id="pay-opt-cash" onclick="selectPayMethod('cash')"><span class="pay-icon">💵</span><div class="pay-label">เงินสด</div></div>
+    <div class="pay-option" id="pay-opt-transfer" onclick="selectPayMethod('transfer')"><span class="pay-icon">📱</span><div class="pay-label">โอนเงิน</div></div>
+  </div>
+  <div id="pay-cash-section">
+    <div class="form-group"><label class="form-label">รับเงินมา (฿)</label><input class="form-input" id="pay-received" type="number" placeholder="0.00" oninput="calcChange()"></div>
+    <div class="change-box" id="change-box" style="display:none"><div class="change-label">เงินทอน</div><div class="change-value" id="change-value">฿0</div></div>
+  </div>
+  <div id="pay-transfer-section" style="display:none">
+    <div class="qr-box"><div class="qr-inner"><svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg"><rect width="100" height="100" fill="white"/><rect x="10" y="10" width="30" height="30" fill="#1aaa5e"/><rect x="15" y="15" width="20" height="20" fill="white"/><rect x="18" y="18" width="14" height="14" fill="#1aaa5e"/><rect x="60" y="10" width="30" height="30" fill="#1aaa5e"/><rect x="65" y="15" width="20" height="20" fill="white"/><rect x="68" y="18" width="14" height="14" fill="#1aaa5e"/><rect x="10" y="60" width="30" height="30" fill="#1aaa5e"/><rect x="15" y="65" width="20" height="20" fill="white"/><rect x="18" y="68" width="14" height="14" fill="#1aaa5e"/><rect x="50" y="50" width="5" height="5" fill="#1aaa5e"/><rect x="58" y="50" width="5" height="5" fill="#1aaa5e"/><rect x="66" y="50" width="5" height="5" fill="#1aaa5e"/><rect x="74" y="50" width="5" height="5" fill="#1aaa5e"/><rect x="50" y="58" width="5" height="5" fill="#1aaa5e"/><rect x="66" y="58" width="5" height="5" fill="#1aaa5e"/><rect x="74" y="58" width="5" height="5" fill="#1aaa5e"/><rect x="50" y="66" width="5" height="5" fill="#1aaa5e"/><rect x="58" y="66" width="5" height="5" fill="#1aaa5e"/><rect x="74" y="66" width="5" height="5" fill="#1aaa5e"/><rect x="50" y="74" width="5" height="5" fill="#1aaa5e"/><rect x="58" y="74" width="5" height="5" fill="#1aaa5e"/><rect x="66" y="74" width="5" height="5" fill="#1aaa5e"/></svg></div><div style="font-size:12px;color:var(--text-muted)">สแกน QR เพื่อโอนเงิน</div><div class="qr-amount" id="pay-qr-amount"></div></div>
+  </div>
+  <div id="pay-loyalty-info"></div>
+  <div style="margin-top:14px">
+    <div class="summary-row"><span>จำนวนรายการ</span><span id="pay-item-count"></span></div>
+    <div class="summary-row" id="pay-subtotal-row" style="display:none"><span>ยอดก่อนลด</span><span id="pay-subtotal-value"></span></div>
+    <div class="summary-row" id="pay-discount-row" style="display:none"><span style="color:var(--danger)">🎁 ส่วนลด</span><span id="pay-discount-value" style="color:var(--danger)"></span></div>
+    <div class="summary-row summary-total"><span>ยอดรวม</span><span id="pay-total-value"></span></div>
+  </div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-payment')">ยกเลิก</button><button class="btn btn-success" style="font-size:14px;padding:10px 26px" onclick="confirmPayment()">✅ ยืนยันชำระ</button></div>
+</div></div>
+
+<!-- Product -->
+<div class="modal-overlay" id="modal-product"><div class="modal">
+  <div class="modal-title" id="modal-prod-title">➕ เพิ่มสินค้าใหม่</div>
+  <div class="form-group"><label class="form-label">รูปภาพสินค้า</label><div class="img-dropzone" id="img-dropzone" onclick="document.getElementById('img-file-input').click()"><span>📷</span><span>คลิกเพื่อเลือกรูปภาพ</span></div><input type="file" id="img-file-input" accept="image/*" style="display:none" onchange="handleImageUpload(this)"></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">ชื่อสินค้า *</label><input class="form-input" id="fp-name" placeholder="ชื่อสินค้า"></div><div class="form-group"><label class="form-label">หมวดหมู่</label><input class="form-input" id="fp-cat" placeholder="เช่น เครื่องดื่ม"></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">ราคาขาย (฿) *</label><input class="form-input" id="fp-price" type="number" placeholder="0"></div><div class="form-group"><label class="form-label">ราคาทุน (฿)</label><input class="form-input" id="fp-cost" type="number" placeholder="0 (ถ้าไม่ทราบ)"></div></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">สต็อกคลังกลาง *</label><input class="form-input" id="fp-stock" type="number" placeholder="0"></div><div class="form-group"><label class="form-label">SKU / บาร์โค้ด</label><input class="form-input" id="fp-sku" placeholder="ไม่บังคับ"></div></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-product')">ยกเลิก</button><button class="btn btn-primary" onclick="saveProduct()">💾 บันทึก</button></div>
+</div></div>
+
+<!-- Adjust Stock -->
+<div class="modal-overlay" id="modal-adjust-stock"><div class="modal" style="width:420px">
+  <div class="modal-title">🗄️ ปรับสต็อกคลังกลาง</div>
+  <div class="form-group"><label class="form-label">สินค้า</label><select class="form-input" id="adj-product-select"></select></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">ประเภท</label><select class="form-input" id="adj-type"><option value="add">เพิ่มสต็อก (+)</option><option value="remove">ตัดสต็อก (−)</option><option value="set">กำหนดจำนวน</option></select></div><div class="form-group"><label class="form-label">จำนวน</label><input class="form-input" id="adj-qty" type="number" placeholder="0" min="0"></div></div>
+  <div class="form-group"><label class="form-label">หมายเหตุ</label><input class="form-input" id="adj-note" placeholder="เช่น รับสินค้าใหม่"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-adjust-stock')">ยกเลิก</button><button class="btn btn-primary" onclick="confirmAdjustStock()">✅ ยืนยัน</button></div>
+</div></div>
+
+<!-- Withdraw -->
+<div class="modal-overlay" id="modal-withdraw"><div class="modal modal-lg">
+  <div class="modal-title">📤 สร้างคำขอเบิกสินค้า</div>
+  <div style="background:rgba(26,170,94,.07);border:1px solid rgba(26,170,94,.2);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:12px;color:var(--text-secondary)">📌 เมื่อเจ้าของอนุมัติ: <strong style="color:var(--danger)">คลังกลางจะลด</strong> → <strong style="color:var(--success)">สต็อกสาขาคุณจะเพิ่ม</strong></div>
+  <div id="wr-rows-container"></div>
+  <button class="btn btn-secondary btn-sm mb-2" onclick="addWithdrawRow()">+ เพิ่มรายการ</button>
+  <div class="form-group"><label class="form-label">เหตุผล</label><input class="form-input" id="wr-reason" placeholder="ระบุเหตุผลการเบิก"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-withdraw')">ยกเลิก</button><button class="btn btn-primary" onclick="submitWithdraw()">📤 ส่งคำขอ</button></div>
+</div></div>
+
+<!-- Approve Preview -->
+<div class="modal-overlay" id="modal-approve-preview"><div class="modal">
+  <div class="modal-title">✅ ยืนยันอนุมัติคำขอเบิก</div>
+  <div id="approve-preview-body"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-approve-preview')">ยกเลิก</button><button class="btn btn-success" style="padding:10px 26px" onclick="confirmApprove()">✅ อนุมัติ</button></div>
+</div></div>
+
+<!-- Account -->
+<div class="modal-overlay" id="modal-account"><div class="modal" style="width:460px">
+  <div class="modal-title">👤 เพิ่มบัญชีผู้ใช้</div>
+  <div class="form-group"><label class="form-label">ชื่อ-นามสกุล</label><input class="form-input" id="acc-name" placeholder="ชื่อ"></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">ชื่อผู้ใช้</label><input class="form-input" id="acc-username" placeholder="username"></div><div class="form-group"><label class="form-label">รหัสผ่าน</label><input class="form-input" id="acc-password" type="password" placeholder="6+ ตัว + ตัวเลข" oninput="onPasswordInput(this.value)"><div id="acc-pw-hint" style="font-size:11px;margin-top:4px"></div></div></div>
+  <div class="form-group"><label class="form-label">อีเมล</label><input class="form-input" id="acc-email" type="email" placeholder="email@example.com"></div>
+  <div class="form-row"><div class="form-group"><label class="form-label">บทบาท</label><select class="form-input" id="acc-role"><option value="staff">พนักงาน</option><option value="manager">ผู้จัดการสาขา</option><option value="owner">เจ้าของร้าน</option></select></div><div class="form-group"><label class="form-label">ชื่อสาขา</label><input class="form-input" id="acc-branch" placeholder="ชื่อสาขา"></div></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-account')">ยกเลิก</button><button class="btn btn-primary" onclick="saveAccount()">💾 บันทึก</button></div>
+</div></div>
+
+<!-- Comment -->
+<div class="modal-overlay" id="modal-comment"><div class="modal" style="width:460px">
+  <div class="modal-title">💬 คอมเมนต์บิล</div>
+  <div id="comment-modal-body"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-comment')">ปิด</button><button class="btn btn-primary" onclick="submitComment()">💬 เพิ่ม</button></div>
+</div></div>
+
+<!-- Review -->
+<div class="modal-overlay" id="modal-review"><div class="modal" style="width:460px">
+  <div class="modal-title">⭐ รีวิวสินค้า</div>
+  <div id="review-modal-body"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-review')">ปิด</button><button class="btn btn-primary" onclick="submitReview()">⭐ บันทึก</button></div>
+</div></div>
+
+<!-- Shift -->
+<div class="modal-overlay" id="modal-shift"><div class="modal" style="width:440px">
+  <div class="modal-title">⏱️ สรุปยอดปิดกะ</div>
+  <div id="shift-summary-body"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-shift')">ยกเลิก</button><button class="btn btn-danger" style="padding:10px 26px" onclick="confirmCloseShift()">🔒 ปิดกะ</button></div>
+</div></div>
+
+<!-- Barcode Scanner -->
+<div class="modal-overlay" id="modal-scanner"><div class="modal" style="width:400px">
+  <div class="modal-title">📷 สแกนบาร์โค้ด</div>
+  <div style="border-radius:12px;overflow:hidden;background:#000;margin-bottom:14px;position:relative">
+    <video id="scanner-video" style="width:100%;height:260px;object-fit:cover;display:block" playsinline></video>
+    <div style="position:absolute;inset:0;border:3px solid rgba(26,170,94,.6);border-radius:12px;pointer-events:none"></div>
+    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:200px;height:2px;background:rgba(26,170,94,.8);animation:scanLine 2s ease-in-out infinite"></div>
+  </div>
+  <div class="modal-actions"><button class="btn btn-danger" onclick="closeBarcodeScanner()">❌ ปิด</button></div>
+</div></div>
+
+<!-- Customer Select -->
+<div class="modal-overlay" id="modal-customer-select"><div class="modal" style="width:420px">
+  <div class="modal-title">👤 เลือกลูกค้า</div>
+  <div class="glass-card" id="customer-select-list" style="max-height:300px;overflow-y:auto"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-customer-select')">ปิด</button><button class="btn btn-primary" onclick="openAddCustomer()">+ เพิ่มลูกค้าใหม่</button></div>
+</div></div>
+
+<!-- Promotion (ใหม่) -->
+<div class="modal-overlay" id="modal-promo"><div class="modal" style="width:440px">
+  <div class="modal-title">🎁 เพิ่มโปรโมชั่น</div>
+  <div class="form-group"><label class="form-label">ชื่อโปรโมชั่น</label><input class="form-input" id="promo-name" placeholder="เช่น ลด 10% ทุกบิล"></div>
+  <div class="form-group"><label class="form-label">ประเภท</label>
+    <select class="form-input" id="promo-type" onchange="togglePromoType()">
+      <option value="percent">ลด % จากยอดรวม</option>
+      <option value="fixed">ลดจำนวนเงิน ฿</option>
+      <option value="minspend">ซื้อครบกำหนด ลดทันที</option>
+    </select>
+  </div>
+  <div id="promo-value-group" class="form-group"><label class="form-label">ค่าส่วนลด</label><input class="form-input" id="promo-value" type="number" placeholder="เช่น 10 (สำหรับ 10%)"></div>
+  <div id="promo-minspend-group" class="form-group" style="display:none"><label class="form-label">ซื้อครบ (฿)</label><input class="form-input" id="promo-minspend" type="number" placeholder="เช่น 200"></div>
+  <div id="promo-discount-group" class="form-group" style="display:none"><label class="form-label">ลด (฿)</label><input class="form-input" id="promo-discount" type="number" placeholder="เช่น 30"></div>
+  <div class="modal-actions"><button class="btn btn-secondary" onclick="closeModal('modal-promo')">ยกเลิก</button><button class="btn btn-primary" onclick="savePromo()">💾 บันทึก</button></div>
+</div></div>
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+<div class="toast" id="toast" style="display:none"></div>
+
+<script src="js/firebase-config.js"></script>
+<script src="js/data.js"></script>
+<script src="js/auth.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>

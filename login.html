@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>POS Pro — เข้าสู่ระบบ</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body style="display:flex;align-items:center;justify-content:center;min-height:100vh;overflow:auto">
+
+  <div class="login-box">
+    <div class="login-logo">
+      <span class="brand-icon">🧸</span>
+      <div class="brand">PUNKANOMKKEAW</div>
+      <div class="sub">ระบบจัดการร้านค้า คลังกลาง + สาขา</div>
+    </div>
+
+    <div class="login-section-label">เลือกบัญชี</div>
+    <div class="acc-chips" id="acc-chips"></div>
+
+    <div class="form-group">
+      <label class="form-label">รหัสผ่าน</label>
+      <input class="form-input" id="login-pw" type="password"
+             placeholder="กรอกรหัสผ่าน"
+             onkeydown="if(event.key==='Enter') doLogin()">
+      <div class="form-hint">Have a Nice Day</div>
+    </div>
+
+    <button class="btn-login" onclick="doLogin()">🔑 เข้าสู่ระบบ</button>
+    <div class="login-error" id="login-error">❌ รหัสผ่านไม่ถูกต้อง กรุณาลองอีกครั้ง</div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- โหลด data.js ก่อน → auth.js ทีหลัง -->
+  <script src="js/data.js"></script>
+  <script src="js/auth.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      buildLoginChips();
+    });
+  </script>
+</body>
+</html>
